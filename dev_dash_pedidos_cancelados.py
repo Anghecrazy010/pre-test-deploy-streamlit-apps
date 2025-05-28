@@ -6,6 +6,8 @@ import plotly.express as px
 from urllib.parse import urlencode
 import requests
 import time
+import os
+from sqlalchemy.exc import SQLAlchemyError
 
 
 # --- Configurar página ---
@@ -17,10 +19,10 @@ st.set_page_config(
 )
 
 # --- Leer secretos ---
-AUTH0_CLIENT_ID = st.secrets["auth0"]["client_id"]
-AUTH0_CLIENT_SECRET = st.secrets["auth0"]["client_secret"]
-AUTH0_DOMAIN = st.secrets["auth0"]["domain"]
-REDIRECT_URI = "http://10.10.21.53:8501/"
+AUTH0_CLIENT_ID = os.environ["AUTH0_CLIENT_ID"]
+AUTH0_CLIENT_SECRET = os.environ["AUTH0_CLIENT_SECRET"]
+AUTH0_DOMAIN = os.environ["AUTH0_DOMAIN"]
+REDIRECT_URI = "https://pedidos-cancelados-test.netlify.app/"
 
 # --- URLs de Auth0 ---
 AUTH0_AUTHORIZE_URL = f"https://{AUTH0_DOMAIN}/authorize"
@@ -139,7 +141,7 @@ def donut_plotly(percentage, color_palette):
 
     return fig
 # Crear motor SQLAlchemy a partir de la URL del archivo secrets.toml
-engine = create_engine(st.secrets["connections"]["sql"]["ebs12"])
+engine = create_engine(os.environ["EBS12"])
 
 # Consulta con cacheo
 @st.cache_data(ttl=120)  # Cachea por 10 minutos
@@ -285,11 +287,20 @@ and CONVERT(DATETIME, CONVERT(DATE, OOHA.CREATION_DATE)) > '01-01-2022'
     
     
     """
-    with engine.connect() as connection:
-        return pd.read_sql(query, connection)
 
-df = obtener_datos()
+    try:
+        with engine.connect() as connection:
+            return pd.read_sql(query, connection)
+    except SQLAlchemyError as e:
+        # Lanzamos la excepción para que Streamlit pueda manejarla fuera
+        raise RuntimeError(f"Error al ejecutar la consulta: {str(e)}")
 
+# Lógica en la app para mostrar el error en la interfaz
+try:
+    df = obtener_datos()
+except Exception as e:
+    st.error(f"Ocurrió un error al obtener los datos: {e}")
+    df = pd.DataFrame()  # dataframe vacío como fallback
 
   # Asegurar que fecha sea datetime
 df['FECHA CREACION'] = pd.to_datetime(df['FECHA CREACION'])
